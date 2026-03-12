@@ -48,7 +48,7 @@ class _FailingChatService:
         )
 
 
-class _DummyUser:
+class _TestUser:
     user_id = "test-user"
     jwt_token = "test-token"
 
@@ -59,7 +59,7 @@ async def test_search_endpoint_returns_503_for_disk_watermark_errors():
         SearchBody(query="*", limit=10),
         search_service=_FailingSearchService(),
         session_manager=None,
-        user=_DummyUser(),
+        user=_TestUser(),
     )
     body = json.loads(response.body.decode("utf-8"))
     assert response.status_code == 503
@@ -72,7 +72,7 @@ async def test_chat_endpoint_returns_503_for_disk_watermark_errors():
         ChatBody(prompt="hello", stream=False),
         chat_service=_FailingChatService(),
         session_manager=None,
-        user=_DummyUser(),
+        user=_TestUser(),
     )
     body = json.loads(response.body.decode("utf-8"))
     assert response.status_code == 503

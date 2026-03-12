@@ -18,6 +18,18 @@ class SearchService:
     def __init__(self, session_manager=None):
         self.session_manager = session_manager
 
+    def _log_and_reraise_error(self, error: Exception, search_body: Dict[str, Any]):
+        raw_error_message = str(error)
+        normalized_error_message = normalize_opensearch_error_message(raw_error_message)
+        logger.error(
+            "OpenSearch query failed",
+            error=normalized_error_message,
+            search_body=search_body,
+        )
+        if normalized_error_message != raw_error_message:
+            raise RuntimeError(normalized_error_message) from error
+        raise error
+
     @tool
     async def search_tool(self, query: str, embedding_model: str = None) -> Dict[str, Any]:
         """
@@ -425,27 +437,10 @@ class SearchService:
                     )
                     raise
             else:
-                normalized_error_message = normalize_opensearch_error_message(error_message)
-                logger.error(
-                    "OpenSearch query failed",
-                    error=normalized_error_message,
-                    search_body=search_body,
-                )
-                if normalized_error_message != error_message:
-                    raise RuntimeError(normalized_error_message) from e
-                raise
+                self._log_and_reraise_error(e, search_body)
         except Exception as e:
-            error_message = str(e)
-            normalized_error_message = normalize_opensearch_error_message(error_message)
-            logger.error(
-                "OpenSearch query failed",
-                error=normalized_error_message,
-                search_body=search_body,
-            )
-            if normalized_error_message != error_message:
-                raise RuntimeError(normalized_error_message) from e
-            # Re-raise the exception so the API returns the error to frontend
-            raise
+            # Re-raise exceptions so the API returns the error to frontend.
+            self._log_and_reraise_error(e, search_body)
 
         # Transform results (keep for backward compatibility)
         chunks = []

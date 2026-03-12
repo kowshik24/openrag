@@ -4,10 +4,7 @@ from fastapi import Depends
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from utils.logging_config import get_logger
-from utils.opensearch_errors import (
-    is_opensearch_disk_watermark_error,
-    normalize_opensearch_error_message,
-)
+from utils.opensearch_errors import normalize_opensearch_error_message
 
 from dependencies import get_chat_service, get_session_manager, get_current_user
 from session_manager import User
@@ -77,9 +74,11 @@ async def chat_endpoint(
     except Exception as e:
         raw_error_msg = str(e)
         error_msg = normalize_opensearch_error_message(raw_error_msg)
-        if is_opensearch_disk_watermark_error(raw_error_msg):
+        if error_msg != raw_error_msg:
+            logger.error("Chat request failed", error=error_msg)
             return JSONResponse({"error": error_msg}, status_code=503)
-        return JSONResponse({"error": error_msg}, status_code=500)
+        logger.error("Chat request failed", error=error_msg)
+        return JSONResponse({"error": "Chat request failed"}, status_code=500)
 
 
 async def langflow_endpoint(

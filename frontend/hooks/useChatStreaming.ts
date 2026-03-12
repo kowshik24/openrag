@@ -123,8 +123,15 @@ export function useChatStreaming({
         const errorText = await response.text().catch(() => "Unknown error");
         let parsedErrorMessage = errorText;
         try {
-          const parsedError = JSON.parse(errorText) as { error?: string };
-          parsedErrorMessage = parsedError.error || errorText;
+          const parsedError: unknown = JSON.parse(errorText);
+          if (
+            typeof parsedError === "object" &&
+            parsedError !== null &&
+            "error" in parsedError &&
+            typeof parsedError.error === "string"
+          ) {
+            parsedErrorMessage = parsedError.error;
+          }
         } catch {
           // Keep original text for non-JSON error bodies
         }
