@@ -121,7 +121,23 @@ export function useChatStreaming({
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(`Server error (${response.status}): ${errorText}`);
+        let parsedErrorMessage = errorText;
+        try {
+          const parsedError: unknown = JSON.parse(errorText);
+          if (
+            typeof parsedError === "object" &&
+            parsedError !== null &&
+            "error" in parsedError &&
+            typeof parsedError.error === "string"
+          ) {
+            parsedErrorMessage = parsedError.error;
+          }
+        } catch {
+          // Keep original text for non-JSON error bodies
+        }
+        throw new Error(
+          `Server error (${response.status}): ${parsedErrorMessage}`,
+        );
       }
 
       const reader = response.body?.getReader();
@@ -455,14 +471,17 @@ export function useChatStreaming({
                     currentFunctionCalls.push(newFunctionCall);
                   }
                 }
-                
+
                 // Check for error status from Langflow
-                if (chunk.finish_reason === "error" || chunk.status === "failed") {
+                if (
+                  chunk.finish_reason === "error" ||
+                  chunk.status === "failed"
+                ) {
                   console.error("Error detected in stream");
-                  
+
                   // Mark this as an error message and complete the stream
                   isError = true;
-                  
+
                   // Exit the streaming loop by throwing so the reader stops promptly on error
                   throw new Error("Error detected in stream");
                 }
@@ -486,7 +505,11 @@ export function useChatStreaming({
                 else if (chunk.delta) {
                   if (typeof chunk.delta === "string") {
                     currentContent += chunk.delta;
-                  } else if (typeof chunk.delta === "object" && chunk.delta.text && !chunk.delta.content) {
+                  } else if (
+                    typeof chunk.delta === "object" &&
+                    chunk.delta.text &&
+                    !chunk.delta.content
+                  ) {
                     // Only add text if content wasn't already processed
                     currentContent += chunk.delta.text;
                   }
@@ -648,7 +671,7 @@ export function useChatStreaming({
       // Create user-friendly error message
       const errorMessage = (error as Error).message;
       let errorContent = errorMessage; // Default to the actual error message
-      
+
       // Only override with generic messages for specific infrastructure errors
       if (errorMessage?.includes("timed out")) {
         errorContent =

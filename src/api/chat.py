@@ -4,6 +4,7 @@ from fastapi import Depends
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from utils.logging_config import get_logger
+from utils.opensearch_errors import normalize_opensearch_error_message
 
 from dependencies import get_chat_service, get_session_manager, get_current_user
 from session_manager import User
@@ -28,47 +29,56 @@ async def chat_endpoint(
     user: User = Depends(get_current_user),
 ):
     """Handle chat requests"""
-    if not body.prompt:
-        return JSONResponse({"error": "Prompt is required"}, status_code=400)
+    try:
+        if not body.prompt:
+            return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    jwt_token = user.jwt_token
+        jwt_token = user.jwt_token
 
-    if body.filters:
-        from auth_context import set_search_filters
-        set_search_filters(body.filters)
+        if body.filters:
+            from auth_context import set_search_filters
+            set_search_filters(body.filters)
 
-    from auth_context import set_search_limit, set_score_threshold
-    set_search_limit(body.limit)
-    set_score_threshold(body.scoreThreshold)
+        from auth_context import set_search_limit, set_score_threshold
+        set_search_limit(body.limit)
+        set_score_threshold(body.scoreThreshold)
 
-    if body.stream:
-        return StreamingResponse(
-            await chat_service.chat(
+        if body.stream:
+            return StreamingResponse(
+                await chat_service.chat(
+                    body.prompt,
+                    user.user_id,
+                    jwt_token,
+                    previous_response_id=body.previous_response_id,
+                    stream=True,
+                    filter_id=body.filter_id,
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Cache-Control",
+                },
+            )
+        else:
+            result = await chat_service.chat(
                 body.prompt,
                 user.user_id,
                 jwt_token,
                 previous_response_id=body.previous_response_id,
-                stream=True,
+                stream=False,
                 filter_id=body.filter_id,
-            ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Cache-Control",
-            },
-        )
-    else:
-        result = await chat_service.chat(
-            body.prompt,
-            user.user_id,
-            jwt_token,
-            previous_response_id=body.previous_response_id,
-            stream=False,
-            filter_id=body.filter_id,
-        )
-        return JSONResponse(result)
+            )
+            return JSONResponse(result)
+    except Exception as e:
+        raw_error_msg = str(e)
+        error_msg = normalize_opensearch_error_message(raw_error_msg)
+        if error_msg != raw_error_msg:
+            logger.error("Chat request failed", error=error_msg)
+            return JSONResponse({"error": error_msg}, status_code=503)
+        logger.error("Chat request failed", error=error_msg)
+        return JSONResponse({"error": "Chat request failed"}, status_code=500)
 
 
 async def langflow_endpoint(

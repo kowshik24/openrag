@@ -4,6 +4,7 @@ from fastapi import Depends
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from utils.logging_config import get_logger
+from utils.opensearch_errors import normalize_opensearch_error_message
 
 from dependencies import get_search_service, get_session_manager, get_current_user
 from session_manager import User
@@ -51,7 +52,10 @@ async def search(
         )
         return JSONResponse(result, status_code=200)
     except Exception as e:
-        error_msg = str(e)
+        raw_error_msg = str(e)
+        error_msg = normalize_opensearch_error_message(raw_error_msg)
+        if error_msg != raw_error_msg:
+            return JSONResponse({"error": error_msg}, status_code=503)
         if (
             "AuthenticationException" in error_msg
             or "access denied" in error_msg.lower()
