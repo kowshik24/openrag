@@ -5,6 +5,7 @@ from agentd.tool_decorator import tool
 from config.settings import EMBED_MODEL, clients, get_embedding_model, get_index_name, WATSONX_EMBEDDING_DIMENSIONS
 from auth_context import get_auth_context
 from utils.logging_config import get_logger
+from utils.opensearch_errors import normalize_opensearch_error_message
 
 logger = get_logger(__name__)
 
@@ -424,14 +425,25 @@ class SearchService:
                     )
                     raise
             else:
+                normalized_error_message = normalize_opensearch_error_message(error_message)
                 logger.error(
-                    "OpenSearch query failed", error=error_message, search_body=search_body
+                    "OpenSearch query failed",
+                    error=normalized_error_message,
+                    search_body=search_body,
                 )
+                if normalized_error_message != error_message:
+                    raise RuntimeError(normalized_error_message) from e
                 raise
         except Exception as e:
+            error_message = str(e)
+            normalized_error_message = normalize_opensearch_error_message(error_message)
             logger.error(
-                "OpenSearch query failed", error=str(e), search_body=search_body
+                "OpenSearch query failed",
+                error=normalized_error_message,
+                search_body=search_body,
             )
+            if normalized_error_message != error_message:
+                raise RuntimeError(normalized_error_message) from e
             # Re-raise the exception so the API returns the error to frontend
             raise
 
